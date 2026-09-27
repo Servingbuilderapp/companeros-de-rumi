@@ -9,8 +9,9 @@ const STORAGE_KEY = "rumi_progress_v2";
 // Mientras los tres campos estén vacíos, la app funciona 100% local y no manda nada.
 const INSTITUTION_CONFIG = { nombre: "", apiUrl: "", apiKey: "" };
 
-function freshState() {
+function freshState(keepStoryId) {
   return {
+    storyId: keepStoryId || null, // historia elegida para todo el año — fija hasta terminar las 52 semanas
     studentName: null,
     weekIndex: 1,        // semana actual (1..52)
     dayIndex: 0,          // solo usado en semanas de diálogo (0..4)
@@ -24,6 +25,23 @@ function freshState() {
   };
 }
 
+// Construye el objeto de historia activo combinando el motor compartido
+// (weekDefs/axisLabels/umbral/52 semanas, definidos en data.js) con el
+// contenido propio (dialogues_X/mechanics_X) de la historia elegida.
+function buildActiveStory(entry) {
+  return {
+    id: entry.id,
+    title: entry.title,
+    student: "Rumi",
+    totalWeeks: STORY.totalWeeks,
+    axisLabels: STORY.axisLabels,
+    amarilloThreshold: STORY.amarilloThreshold,
+    weekDefs: STORY.weekDefs,
+    dialogues: entry.dialoguesVar,
+    mechanics: entry.mechanicsVar
+  };
+}
+
 function loadProgress() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -33,10 +51,19 @@ function loadProgress() {
 }
 
 let state = loadProgress();
+if (state.storyId === undefined) state.storyId = null; // progreso guardado antes de tener historias seleccionables
 // Estado transitorio de la mecánica en curso (no se persiste a mitad de semana;
 // si se recarga la página a mitad de una mecánica, esa semana se reinicia desde
 // el día 1 — el progreso de semanas ya completadas nunca se pierde).
 let mech = null;
+// Historia activa (motor + contenido). Null hasta que el estudiante elige una;
+// una vez elegida queda fija en localStorage hasta terminar las 52 semanas.
+let ACTIVE_STORY = null;
+if (state.storyId) {
+  const entry0 = findStoryEntry(state.storyId);
+  if (entry0) ACTIVE_STORY = buildActiveStory(entry0);
+  else state.storyId = null; // id guardado ya no existe en el registro; vuelve a pedir elegir
+}
 
 function saveProgress() {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); } catch (e) { /* best-effort */ }
@@ -44,8 +71,8 @@ function saveProgress() {
 
 function maxForAxis(axis) {
   let total = 0;
-  for (let i = 0; i < state.weekIndex && i < STORY.weekDefs.length; i++) {
-    const add = STORY.weekDefs[i].maxAdd;
+  for (let i = 0; i < state.weekIndex && i < ACTIVE_STORY.weekDefs.length; i++) {
+    const add = ACTIVE_STORY.weekDefs[i].maxAdd;
     if (add && add[axis]) total += add[axis];
   }
   return total;
@@ -53,12 +80,12 @@ function maxForAxis(axis) {
 
 function computeSemaforo() {
   const out = {};
-  for (const axis of Object.keys(STORY.axisLabels)) {
+  for (const axis of Object.keys(ACTIVE_STORY.axisLabels)) {
     const max = maxForAxis(axis);
     const got = state.scores[axis] || 0;
     const ratio = max > 0 ? got / max : 0;
-    const calibrando = STORY.weekDefs[state.weekIndex - 1].firstAxis === axis;
-    out[axis] = { max, got, ratio, calibrando, nivel: max === 0 ? "sin-datos" : (calibrando ? "calibrando" : (ratio >= STORY.amarilloThreshold ? "amarillo" : "verde")) };
+    const calibrando = ACTIVE_STORY.weekDefs[state.weekIndex - 1].firstAxis === axis;
+    out[axis] = { max, got, ratio, calibrando, nivel: max === 0 ? "sin-datos" : (calibrando ? "calibrando" : (ratio >= ACTIVE_STORY.amarilloThreshold ? "amarillo" : "verde")) };
   }
   return out;
 }
@@ -89,11 +116,38 @@ function pushDiary(week, text) {
   state.diary.push({ week, text });
 }
 
+// ---------- Pantalla: elegir historia (fija hasta terminar las 52 semanas) ----------
+function renderStorySelect() {
+  const cards = STORIES_REGISTRY.map((s) => `
+    <button class="option" data-id="${s.id}" style="text-align:left;display:block;width:100%;margin-bottom:10px">
+      <strong>${s.title}</strong><br/><span style="color:var(--muted);font-size:0.85rem">${s.tagline}</span>
+    </button>`).join("");
+  document.getElementById("screen").innerHTML = `
+    <div class="card">
+      <div class="week-tag">Elige tu historia</div>
+      <h2 class="heading">¿Con cuál quieres jugar este año?</h2>
+      <p class="scene-text" style="color:var(--muted);font-size:0.85rem">
+        Una vez elegida, se queda igual durante todo el año escolar (52 semanas). Al terminarla podrás elegir otra.
+      </p>
+      <div class="options">${cards}</div>
+    </div>`;
+  document.getElementById("screen").querySelectorAll(".option").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const entry = findStoryEntry(btn.dataset.id);
+      if (!entry) return;
+      state = freshState(entry.id);
+      ACTIVE_STORY = buildActiveStory(entry);
+      saveProgress();
+      render();
+    });
+  });
+}
+
 // ---------- Pantalla: pedir nombre ----------
 function renderNamePrompt() {
   document.getElementById("screen").innerHTML = `
     <div class="card">
-      <div class="week-tag">${STORY.title}</div>
+      <div class="week-tag">${ACTIVE_STORY.title}</div>
       <h2 class="heading">Antes de empezar</h2>
       <p class="scene-text">¿Cómo te gustaría que te llamemos dentro del juego?</p>
       <input id="nameInput" class="diary-input" style="min-height:auto" placeholder="Tu nombre o apodo" />
@@ -114,7 +168,7 @@ function renderSemaforo() {
   saveProgress();
 
   const rows = Object.entries(semaforo).map(([ax, v]) => {
-    const label = STORY.axisLabels[ax];
+    const label = ACTIVE_STORY.axisLabels[ax];
     let estado, dotClass;
     if (v.nivel === "sin-datos") { estado = "Sin datos aún"; dotClass = "sin-datos"; }
     else if (v.nivel === "calibrando") { estado = "Calibrando"; dotClass = "verde"; }
@@ -125,12 +179,12 @@ function renderSemaforo() {
     `<div class="semaforo-row"><span><span class="dot sin-datos"></span>Riesgo de autolesión</span><span style="color:var(--muted);font-size:0.85rem">Sin datos aún</span></div>` +
     `<div class="semaforo-row"><span><span class="dot sin-datos"></span>Abuso</span><span style="color:var(--muted);font-size:0.85rem">Sin datos aún</span></div>`;
 
-  const isLast = state.weekIndex >= STORY.totalWeeks;
+  const isLast = state.weekIndex >= ACTIVE_STORY.totalWeeks;
   const nextLabel = isLast ? "" : `<button class="primary" id="nextWeekBtn">Continuar a la Semana ${state.weekIndex + 1}</button>`;
 
   document.getElementById("screen").innerHTML = `
     <div class="panel">
-      <div class="week-tag">Semana ${state.weekIndex} de ${STORY.totalWeeks} completa</div>
+      <div class="week-tag">Semana ${state.weekIndex} de ${ACTIVE_STORY.totalWeeks} completa</div>
       <h2 class="heading">Panel (equipo del colegio)</h2>
       <p class="scene-text" style="color:var(--muted);font-size:0.85rem">
         Esto no lo ve ${state.studentName} dentro del juego. Umbral de ejemplo (60%), sin validar clínicamente todavía.
@@ -139,8 +193,19 @@ function renderSemaforo() {
       <p class="footer-note" style="margin-top:4px">
         ${INSTITUTION_CONFIG.apiUrl ? "Conexión a institución configurada." : "Institución no configurada todavía — todo quedó guardado solo en este dispositivo."}
       </p>
-      ${isLast ? '<p class="scene-text" style="font-weight:600">Año escolar completo. Gracias por jugar la historia de Rumi.</p>' : nextLabel}
+      ${isLast ? '<p class="scene-text" style="font-weight:600">Año escolar completo. Gracias por jugar la historia de Rumi.</p><button class="primary" id="chooseAnotherBtn">Elegir otra historia para el próximo año</button>' : nextLabel}
     </div>`;
+
+  if (isLast) {
+    state.finished = true;
+    saveProgress();
+    document.getElementById("chooseAnotherBtn").addEventListener("click", () => {
+      state = freshState();
+      ACTIVE_STORY = null;
+      saveProgress();
+      render();
+    });
+  }
 
   if (!isLast) {
     document.getElementById("nextWeekBtn").addEventListener("click", () => {
@@ -162,7 +227,7 @@ function completeWeek() {
 
 // ---------- Semanas de diálogo (5 escenas, elección con peso/eje) ----------
 function renderDialogue() {
-  const scenes = STORY.dialogues[state.weekIndex];
+  const scenes = ACTIVE_STORY.dialogues[state.weekIndex];
   const s = scenes[state.dayIndex];
   document.getElementById("screen").innerHTML = `
     <div class="card">
@@ -361,13 +426,14 @@ function renderThoughts(cfg) {
 // ---------- Enrutador principal ----------
 function render() {
   renderStats();
+  if (!ACTIVE_STORY) return renderStorySelect();
   if (!state.studentName) return renderNamePrompt();
-  if (state.weekIndex > STORY.totalWeeks) return renderSemaforo();
+  if (state.weekIndex > ACTIVE_STORY.totalWeeks) return renderSemaforo();
 
-  const def = STORY.weekDefs[state.weekIndex - 1];
+  const def = ACTIVE_STORY.weekDefs[state.weekIndex - 1];
   if (def.type === "dialogue") return renderDialogue();
 
-  const cfg = STORY.mechanics[state.weekIndex];
+  const cfg = ACTIVE_STORY.mechanics[state.weekIndex];
   if (cfg.type === "habit") return renderHabit(cfg);
   if (cfg.type === "timing") return renderTiming(cfg);
   if (cfg.type === "social") return renderSocial(cfg);
