@@ -219,10 +219,69 @@ function renderSemaforo() {
 }
 
 function completeWeek() {
-  state.xp += 50;
+  const xpGained = 50;
+  state.xp += xpGained;
   state.streak += 1;
   saveProgress();
-  renderSemaforo();
+  renderCelebration(xpGained);
+}
+
+// ---------- Celebración al terminar una semana (patrón Duolingo) ----------
+const CELEBRATION_MESSAGES = [
+  "¡Otra semana lista! Sigue así.",
+  "Racha en marcha. ¡No la rompas!",
+  "Cada semana suma. Vas muy bien.",
+  "Rumi está orgulloso de este avance.",
+  "¡Lo lograste! Nos vemos la próxima semana."
+];
+
+function playCelebrationSound() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const notes = [523.25, 659.25, 783.99]; // do-mi-sol, arpegio corto y alegre
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      const start = ctx.currentTime + i * 0.12;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.22, start + 0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.3);
+      osc.start(start);
+      osc.stop(start + 0.32);
+    });
+  } catch (e) { /* si el navegador bloquea audio, la celebración sigue sin sonido */ }
+}
+
+function renderCelebration(xpGained) {
+  const screen = document.getElementById("screen");
+  const msg = CELEBRATION_MESSAGES[(state.weekIndex - 1) % CELEBRATION_MESSAGES.length];
+  const confetti = Array.from({ length: 24 }).map((_, i) =>
+    `<span class="confetti-piece c${i % 6}" style="left:${(i * 4.3) % 100}%;animation-delay:${(i % 8) * 0.1}s"></span>`
+  ).join("");
+  screen.innerHTML = `
+    <div class="card celebrate">
+      <div class="confetti" aria-hidden="true">${confetti}</div>
+      <div class="celebrate-badge">🎉</div>
+      <h2 class="heading" style="text-align:center">¡Semana ${state.weekIndex} completa!</h2>
+      <p class="scene-text" style="text-align:center;color:var(--muted)">${msg}</p>
+      <div class="celebrate-stats">
+        <div class="celebrate-stat"><span class="celebrate-num">🔥 ${state.streak}</span><span>racha</span></div>
+        <div class="celebrate-stat"><span class="celebrate-num">+${xpGained} XP</span><span>esta semana</span></div>
+        <div class="celebrate-stat"><span class="celebrate-num">⭐ ${state.xp}</span><span>total</span></div>
+      </div>
+      <button class="primary" id="celebrateContinueBtn">Continuar</button>
+    </div>`;
+  renderStats();
+  playCelebrationSound();
+  document.getElementById("celebrateContinueBtn").addEventListener("click", () => {
+    renderSemaforo();
+  });
 }
 
 // ---------- Semanas de diálogo (5 escenas, elección con peso/eje) ----------

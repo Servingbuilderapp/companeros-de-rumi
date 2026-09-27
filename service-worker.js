@@ -2,12 +2,19 @@
 // Estrategia simple: cache-first para los archivos de la app (los datos del estudiante
 // nunca pasan por aquí, se guardan en localStorage del dispositivo, no en la red).
 
-const CACHE_NAME = "rumi-app-v1";
+const CACHE_NAME = "rumi-app-v2";
 const ASSETS = [
   "./",
   "./index.html",
   "./app.js",
   "./data.js",
+  "./stories.js",
+  "./content-banda.js",
+  "./content-nave.js",
+  "./content-ciudad.js",
+  "./content-guardianes.js",
+  "./content-caso.js",
+  "./content-cordillera.js",
   "./manifest.json",
   "./icons/icon-192.png",
   "./icons/icon-512.png"
