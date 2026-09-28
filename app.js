@@ -284,13 +284,111 @@ function renderCelebration(xpGained) {
   });
 }
 
-// ---------- Semanas de diálogo (5 escenas, elección con peso/eje) ----------
+// ---------- Semanas de diálogo — motor de 4 etapas por día: ----------
+// Situación (la escena, ya escrita) -> Pensamiento (bola misteriosa oscura/
+// clara) -> Emoción (medidor de control, se puede reformular) -> Acción (la
+// decisión que ya existía, con su peso/eje clínico). Al cerrar cada día
+// aparece una celebración corta; al cerrar el día 5 sigue como antes hacia
+// el panel del semáforo. No inventa contenido nuevo por día: reutiliza la
+// escena ya escrita para ese día y le agrega la capa de pensamiento/emoción.
+const THOUGHT_POOLS = {
+  ansiedad: [
+    { dark: "Si me equivoco aquí, todos se van a dar cuenta.", light: "Puedo intentarlo aunque no salga perfecto la primera vez." },
+    { dark: "Mi corazón late rápido, algo malo va a pasar.", light: "Sentir esto no significa que algo malo vaya a pasar." },
+    { dark: "No voy a poder con esto.", light: "Puedo ir paso a paso, no tengo que resolverlo todo de una vez." },
+    { dark: "Todos notan que estoy nervioso.", light: "Puede que nadie lo note tanto como yo creo." },
+    { dark: "Si pregunto, van a pensar que soy tonto.", light: "Preguntar es parte de aprender, no un error." },
+    { dark: "Tengo que controlar todo o algo va a salir mal.", light: "No puedo controlar todo, y está bien." }
+  ],
+  depresion: [
+    { dark: "Da igual si lo hago o no, nada cambia.", light: "Un paso pequeño hoy sí cuenta, aunque no se sienta grande." },
+    { dark: "No tengo energía para nada de esto.", light: "Puedo hacer solo una parte pequeña, no todo de una vez." },
+    { dark: "A nadie le importaría si no voy.", light: "Puede que a alguien sí le importe, aunque no lo diga." },
+    { dark: "Siempre me voy a sentir así.", light: "Lo que siento hoy no es lo que voy a sentir siempre." },
+    { dark: "No valgo lo suficiente para esto.", light: "Mi valor no depende de tener un buen día o uno malo." },
+    { dark: "Mejor ni intento, para qué.", light: "Intentarlo un poco ya es más que quedarme quieto." }
+  ],
+  bullying: [
+    { dark: "Si digo algo, va a ser peor.", light: "Contarle a alguien de confianza no es delatar, es pedir ayuda." },
+    { dark: "Es mi culpa que se burlen de mí.", light: "Nadie merece que se burlen de él o ella; la culpa no es suya." },
+    { dark: "Nadie me va a defender.", light: "Puede que alguien sí me apoye si se lo cuento." },
+    { dark: "Si me quedo callado, se les pasa solo.", light: "Callarme no siempre hace que pare; puedo buscar ayuda." },
+    { dark: "Voy a quedar solo si me alejo de ellos.", light: "Alejarme de quien me hace daño no me deja solo." },
+    { dark: "Tengo que aguantar para que no digan que soy débil.", light: "Pedir ayuda no me hace débil." }
+  ],
+  adicciones: [
+    { dark: "Un rato más no le hace daño a nadie.", light: "Puedo decidir hasta cuándo, no dejar que el juego decida por mí." },
+    { dark: "Sin esto no sé qué hacer con el aburrimiento.", light: "Puedo buscar otra cosa que también me guste hacer." },
+    { dark: "Todos mis amigos están conectados, yo también tengo que estar.", light: "Puedo desconectarme un rato sin perderme de nada importante." },
+    { dark: "Ya perdí tanto tiempo que da igual seguir.", light: "Puedo parar en cualquier momento, no solo cuando ya fue mucho." },
+    { dark: "Si paro, me voy a aburrir horrible.", light: "El aburrimiento pasa rápido, no dura para siempre." },
+    { dark: "Necesito revisar el celular antes de dormir, si no, no puedo.", light: "Puedo probar dejarlo a un lado y ver qué pasa." }
+  ]
+};
+
+function pickThought(axis, seed) {
+  const pool = THOUGHT_POOLS[axis] || THOUGHT_POOLS.ansiedad;
+  return pool[seed % pool.length];
+}
+
+function currentWeekAxis() {
+  const def = ACTIVE_STORY.weekDefs[state.weekIndex - 1];
+  return (def && def.firstAxis) || Object.keys(ACTIVE_STORY.axisLabels)[0];
+}
+
 function renderDialogue() {
+  if (!mech || mech.day !== state.dayIndex || mech.week !== state.weekIndex) {
+    mech = { week: state.weekIndex, day: state.dayIndex, stage: "pensamiento" };
+  }
+  if (mech.stage === "pensamiento") return renderDialoguePensamiento();
+  if (mech.stage === "emocion") return renderDialogueEmocion();
+  return renderDialogueAccion();
+}
+
+function renderDialoguePensamiento() {
+  const axis = currentWeekAxis();
+  const seed = (state.weekIndex - 1) * 5 + state.dayIndex;
+  mech.thought = pickThought(axis, seed);
+  mech.wasDark = seed % 2 === 0;
+  document.getElementById("screen").innerHTML = `
+    <div class="card ${mech.wasDark ? "thought-dark" : ""}">
+      <div class="week-tag">Semana ${state.weekIndex} · Día ${state.dayIndex + 1} de 5</div>
+      <h2 class="heading">Un pensamiento aparece...</h2>
+      <p class="scene-text" style="color:var(--muted);font-size:0.85rem">No sabes cuál es todavía. Tócalo para verlo.</p>
+      <div class="options">
+        <button class="option thought-bubble" id="thoughtBtn">${mech.wasDark ? "🌑" : "☀️"} Bola misteriosa</button>
+      </div>
+    </div>`;
+  document.getElementById("thoughtBtn").addEventListener("click", () => {
+    mech.reframed = !mech.wasDark;
+    mech.stage = "emocion";
+    render();
+  });
+}
+
+function renderDialogueEmocion() {
+  const t = mech.thought;
+  const showDark = mech.wasDark && !mech.reframed;
+  document.getElementById("screen").innerHTML = `
+    <div class="card">
+      <div class="week-tag">Semana ${state.weekIndex} · Día ${state.dayIndex + 1} de 5</div>
+      <div class="thought-callout ${showDark ? "dark" : "light"}">${showDark ? t.dark : t.light}</div>
+      <p class="scene-text" style="color:var(--muted);font-size:0.85rem">Control emocional</p>
+      <div class="emotion-meter"><div class="emotion-fill" style="width:${showDark ? 35 : 80}%"></div></div>
+      ${showDark ? '<button class="option" id="reframeBtn">Probar pensarlo distinto</button>' : ""}
+      <button class="primary" id="toAccionBtn">Seguir</button>
+    </div>`;
+  const reframeBtn = document.getElementById("reframeBtn");
+  if (reframeBtn) reframeBtn.addEventListener("click", () => { mech.reframed = true; render(); });
+  document.getElementById("toAccionBtn").addEventListener("click", () => { mech.stage = "accion"; render(); });
+}
+
+function renderDialogueAccion() {
   const scenes = ACTIVE_STORY.dialogues[state.weekIndex];
   const s = scenes[state.dayIndex];
   document.getElementById("screen").innerHTML = `
     <div class="card">
-      <div class="week-tag">Semana ${state.weekIndex}</div>
+      <div class="week-tag">Semana ${state.weekIndex} · Día ${state.dayIndex + 1} de 5</div>
       <div class="day-tag">${s.tag}</div>
       <p class="scene-text">${s.text}</p>
       <div class="options">
@@ -305,10 +403,31 @@ function renderDialogue() {
       state.xp += 10;
       state.dayIndex += 1;
       saveProgress();
+      mech = null;
       if (state.dayIndex >= scenes.length) { completeWeek(); }
-      else { render(); }
+      else { state.streak += 1; saveProgress(); renderDayCelebration(); }
     });
   });
+}
+
+function renderDayCelebration() {
+  const confetti = Array.from({ length: 14 }).map((_, i) =>
+    `<span class="confetti-piece c${i % 6}" style="left:${(i * 7) % 100}%;animation-delay:${(i % 6) * 0.08}s"></span>`
+  ).join("");
+  document.getElementById("screen").innerHTML = `
+    <div class="card celebrate celebrate-day">
+      <div class="confetti" aria-hidden="true">${confetti}</div>
+      <div class="celebrate-badge" style="font-size:2.2rem">✅</div>
+      <h2 class="heading" style="text-align:center">¡Día ${state.dayIndex} de 5 completo!</h2>
+      <div class="celebrate-stats">
+        <div class="celebrate-stat"><span class="celebrate-num">🔥 ${state.streak}</span><span>racha</span></div>
+        <div class="celebrate-stat"><span class="celebrate-num">⭐ ${state.xp}</span><span>XP total</span></div>
+      </div>
+      <button class="primary" id="dayContinueBtn">Seguir</button>
+    </div>`;
+  renderStats();
+  playCelebrationSound();
+  document.getElementById("dayContinueBtn").addEventListener("click", render);
 }
 
 // ---------- Mecánicas: cuidar algo / apagar a tiempo (día a día) ----------

@@ -61,6 +61,16 @@
   .confetti-piece.c0{background:#4f46e5} .confetti-piece.c1{background:#1a9c5e} .confetti-piece.c2{background:#c98a00}
   .confetti-piece.c3{background:#c0392b} .confetti-piece.c4{background:#8b5cf6} .confetti-piece.c5{background:#06b6d4}
   @keyframes confetti-fall{0%{transform:translateY(0) rotate(0deg);opacity:1}100%{transform:translateY(380px) rotate(240deg);opacity:0}}
+
+  .thought-bubble{font-size:1.3rem;text-align:center;padding:22px 16px;}
+  .thought-dark{background:#211c3d;}
+  @media (prefers-color-scheme: dark){ .thought-dark{background:#0f0d1e;} }
+  .thought-callout{padding:14px 16px;border-radius:14px;font-size:0.98rem;border:1px solid var(--line);margin-bottom:4px;}
+  .thought-callout.dark{background:#2a2350;color:#f1eefc;border-color:#463a7a;}
+  .thought-callout.light{background:#eef0ff;color:var(--ink);}
+  .emotion-meter{height:12px;border-radius:99px;background:var(--line);overflow:hidden;margin-bottom:6px;}
+  .emotion-fill{height:100%;background:var(--accent);transition:width .3s ease;}
+  .celebrate-day .celebrate-badge{font-size:2.2rem}
 </style>
 </head>
 <body>
