@@ -21,7 +21,11 @@ function freshState(keepStoryId) {
     impulsividad: null,   // { hits, rounds, avgClicks } — sub-indicador aparte, semanas 5/14/24/34/44
     diary: [],            // { week, day, text }
     alerts: [],           // intentos de alerta: { ts, eje, nivel, enviado, motivo }
-    finished: false
+    finished: false,
+    weekAcc: newWeekAcc(), // acumulado de la semana en curso (mecánicas que puntúan al cierre del día 5)
+    moods: [],
+    personalDiary: [],
+    lastChoice: null
   };
 }
 
@@ -52,6 +56,9 @@ function loadProgress() {
 
 let state = loadProgress();
 if (state.storyId === undefined) state.storyId = null; // progreso guardado antes de tener historias seleccionables
+if (!state.weekAcc) state.weekAcc = newWeekAcc(); // progreso guardado antes de la sesión diaria
+if (!state.moods) state.moods = [];
+if (!state.personalDiary) state.personalDiary = [];
 // Estado transitorio de la mecánica en curso (no se persiste a mitad de semana;
 // si se recarga la página a mitad de una mecánica, esa semana se reinicia desde
 // el día 1 — el progreso de semanas ya completadas nunca se pierde).
@@ -211,6 +218,7 @@ function renderSemaforo() {
     document.getElementById("nextWeekBtn").addEventListener("click", () => {
       state.weekIndex += 1;
       state.dayIndex = 0;
+      state.weekAcc = newWeekAcc();
       mech = null;
       saveProgress();
       render();
@@ -608,14 +616,10 @@ function render() {
   if (!state.studentName) return renderNamePrompt();
   if (state.weekIndex > ACTIVE_STORY.totalWeeks) return renderSemaforo();
 
-  const def = ACTIVE_STORY.weekDefs[state.weekIndex - 1];
-  if (def.type === "dialogue") return renderDialogue();
-
-  const cfg = ACTIVE_STORY.mechanics[state.weekIndex];
-  if (cfg.type === "habit") return renderHabit(cfg);
-  if (cfg.type === "timing") return renderTiming(cfg);
-  if (cfg.type === "social") return renderSocial(cfg);
-  if (cfg.type === "thoughts") return renderThoughts(cfg);
+  // Semana ya cerrada (5 días completos): vuelve al panel, no repite el último día.
+  if (state.dayIndex >= DAYS_PER_WEEK) return renderSemaforo();
+  // Todas las semanas, de las 7 historias, se juegan con la sesión diaria (session.js).
+  return renderSession();
 }
 
 // --- Instalación como app (PWA) ---
