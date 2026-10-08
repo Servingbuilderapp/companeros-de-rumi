@@ -274,7 +274,10 @@ function dayScene() {
   else if (cfg.type === "social") avance = "Esta semana has saludado a " + Object.keys(acc.greeted).length + " de " + cfg.classmates.length + " compañeros. ";
   else if (cfg.type === "thoughts") avance = "Esta semana has probado pensarlo distinto " + acc.changed + (acc.changed === 1 ? " vez" : " veces") + ". ";
   else if (cfg.type === "timing") avance = "Hoy se sigue practicando lo mismo que ayer. ";
-  return { tag: "Día " + (d + 1), text: CONECTORES_DIA[d] + ayer + avance + "<i>" + first + "</i>", cfg, kind: cfg.type };
+  // Escena propia de la historia (beats.js) si existe; si no, la primera frase del contexto como respaldo.
+  const bs = typeof BEATS !== "undefined" && BEATS[ACTIVE_STORY.id] && BEATS[ACTIVE_STORY.id][state.weekIndex];
+  const cuerpo = bs && bs[d - 1] ? bs[d - 1] : "<i>" + first + "</i>";
+  return { tag: "Día " + (d + 1), text: CONECTORES_DIA[d] + ayer + avance + cuerpo, cfg, kind: cfg.type };
 }
 
 function stepSituacion(b) {
