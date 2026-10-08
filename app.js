@@ -244,6 +244,7 @@ const CELEBRATION_MESSAGES = [
 ];
 
 function playCelebrationSound() {
+  if (typeof SOUND_ON !== "undefined" && !SOUND_ON) return; // botón de silencio (session.js)
   try {
     const Ctx = window.AudioContext || window.webkitAudioContext;
     if (!Ctx) return;
