@@ -101,6 +101,53 @@ function pickMany(arr, n, extra) {
 function addXp(n) { state.xp += n; renderStats(); }
 function sessCleanup() { if (SESSION && SESSION.cleanup) { try { SESSION.cleanup(); } catch (e) {} SESSION.cleanup = null; } }
 function el(id) { return document.getElementById(id); }
+
+// ---------- Sonidos (acierto / desafío completo / fin de día) con botón de silencio ----------
+let SOUND_ON = true;
+try { SOUND_ON = localStorage.getItem("rumi_sound") !== "off"; } catch (e) { /* sin almacenamiento: queda con sonido */ }
+let AUDIO_CTX = null;
+function playTones(notes, gap, dur, vol, type) {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    AUDIO_CTX = AUDIO_CTX || new Ctx();
+    notes.forEach((f, i) => {
+      const o = AUDIO_CTX.createOscillator(), g = AUDIO_CTX.createGain();
+      o.type = type || "sine"; o.frequency.value = f; o.connect(g); g.connect(AUDIO_CTX.destination);
+      const t0 = AUDIO_CTX.currentTime + i * gap;
+      g.gain.setValueAtTime(0.0001, t0);
+      g.gain.exponentialRampToValueAtTime(vol, t0 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+    });
+  } catch (e) { /* si el navegador bloquea el audio, el juego sigue sin sonido */ }
+}
+function sfx(kind, n) {
+  if (!SOUND_ON) return;
+  if (kind === "ok") playTones([660, 880], 0.07, 0.16, 0.16, "triangle");
+  else if (kind === "block") {
+    // cada desafío suena un poco más alto que el anterior
+    const base = [392, 440, 494, 523, 587][n || 0];
+    playTones([base, base * 1.25, base * 1.5], 0.11, 0.28, 0.2, "sine");
+  } else if (kind === "day") playTones([523, 659, 784, 1047, 784, 1047], 0.13, 0.34, 0.22, "triangle");
+}
+function setupSoundToggle() {
+  const stats = document.querySelector(".stats");
+  if (!stats || document.getElementById("soundStat")) return;
+  const b = document.createElement("button");
+  b.id = "soundStat"; b.className = "stat"; b.type = "button";
+  b.setAttribute("aria-label", "Sonido");
+  b.style.cssText = "cursor:pointer;color:inherit;font:inherit";
+  const paint = () => { b.textContent = SOUND_ON ? "🔊" : "🔇"; };
+  paint();
+  b.addEventListener("click", () => {
+    SOUND_ON = !SOUND_ON;
+    try { localStorage.setItem("rumi_sound", SOUND_ON ? "on" : "off"); } catch (e) { /* best-effort */ }
+    paint(); sfx("ok");
+  });
+  stats.appendChild(b);
+}
+setupSoundToggle();
 function stripWeekPrefix(s) { return String(s).replace(/^Semana \d+\.\s*/, ""); }
 
 // ---------- Mascota (marcador de posición; la dirección de arte la define otra persona) ----------
@@ -159,7 +206,7 @@ function renderBlockDone(b, cont) {
       <div class="sess-dots">${[0, 1, 2, 3, 4].map((k) => `<span class="${k <= b ? "on" : ""}"></span>`).join("")}</div>
       <button class="primary" id="blkBtn">Seguir</button>
     </div>`;
-  playCelebrationSound();
+  sfx("block", b);
   el("blkBtn").addEventListener("click", cont);
 }
 
@@ -350,7 +397,7 @@ function runTimingGame(rounds, done, msgId, btnId, zoneId, markerId) {
     if (!alive) return;
     clicks += 1;
     if (pos >= zs && pos <= ze) {
-      hits += 1; round += 1; cancelAnimationFrame(raf);
+      hits += 1; round += 1; cancelAnimationFrame(raf); sfx("ok");
       zone.classList.add("hit");
       if (round >= rounds) { btn.disabled = true; msg.textContent = "¡Lo lograste!"; setTimeout(() => alive && done(hits, clicks), 700); }
       else { btn.disabled = true; msg.textContent = "¡Bien! Sigue."; setTimeout(() => { if (!alive) return; zone.classList.remove("hit"); start(); }, 800); }
@@ -391,7 +438,7 @@ function stepDistinto(b) {
         <p class="scene-text" id="gmsg" style="font-size:0.85rem;color:var(--muted);min-height:20px"></p>`);
       el("screen").querySelectorAll(".cell").forEach((c) => c.addEventListener("click", () => {
         if (Number(c.dataset.i) === odd) {
-          c.classList.add("ok"); addXp(5); round += 1;
+          c.classList.add("ok"); addXp(5); round += 1; sfx("ok");
           setTimeout(() => (round >= 3 ? nextStep() : draw()), 500);
         } else { errors += 1; c.classList.add("bad"); el("gmsg").textContent = "Ese no. Mira con calma."; }
       }));
@@ -427,7 +474,7 @@ function stepMemoria(b) {
       const [x, y] = op;
       const cs = cardsEl(), bx = cs[x], by = cs[y];
       if (deck[x].id === deck[y].id) {
-        bx.classList.add("done"); by.classList.add("done"); matched += 1; addXp(5);
+        bx.classList.add("done"); by.classList.add("done"); matched += 1; addXp(5); sfx("ok");
         el("mmsg").textContent = "¡Pareja! " + pares[deck[x].id][0] + " " + pares[deck[x].id][1] + " ayuda a calmarse.";
         lock = false;
         if (matched === 6) setTimeout(() => nextStep(), 900);
@@ -451,7 +498,7 @@ function stepVerdaderoFalso(b, extra) {
       <div class="options" id="vfOpts"><button class="option" data-v="1">Verdadero</button><button class="option" data-v="0">Falso</button></div>`);
     el("screen").querySelectorAll("#vfOpts .option").forEach((btn) => btn.addEventListener("click", () => {
       const ok = (btn.dataset.v === "1") === d.v;
-      if (ok) addXp(5);
+      if (ok) { addXp(5); sfx("ok"); }
       el("vfOpts").innerHTML = `<p class="scene-text"><b>${ok ? "¡Correcto!" : "Casi."}</b> ${d.e}</p><button class="primary" id="vfBtn">Seguir</button>`;
       el("vfBtn").addEventListener("click", () => nextStep());
     }));
@@ -641,7 +688,7 @@ function renderDayEnd() {
       <p class="scene-text" style="text-align:center;font-size:0.8rem;color:var(--muted)">Puedes seguir ahora o volver mañana.</p>
     </div>`;
   renderStats();
-  playCelebrationSound();
+  sfx("day");
   el("dayEndBtn").addEventListener("click", render);
 }
 
