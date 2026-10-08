@@ -260,7 +260,21 @@ function dayScene() {
     return { tag: s.tag, text: s.text, choices: s.choices, kind: "dialogue" };
   }
   const cfg = ACTIVE_STORY.mechanics[state.weekIndex];
-  return { tag: "Día " + (state.dayIndex + 1), text: CONECTORES_DIA[state.dayIndex] + stripWeekPrefix(cfg.intro), cfg, kind: cfg.type };
+  const intro = stripWeekPrefix(cfg.intro);
+  // Día 1: la escena completa. Días 2 a 5: no se repite; se muestra la decisión de ayer, el avance
+  // de la semana y solo la primera frase del contexto (así cada día se siente continuación, no copia).
+  if (state.dayIndex === 0) return { tag: "Día 1", text: intro, cfg, kind: cfg.type };
+  const acc = state.weekAcc || newWeekAcc();
+  const d = state.dayIndex;
+  const m1 = intro.match(/^.*?[.!?](\s|$)/); // primera frase (sin lookbehind: compatible con celulares viejos)
+  const first = (m1 ? m1[0] : intro).trim();
+  const ayer = state.lastChoice ? "Ayer " + String(state.lastChoice).replace(/^Hoy\s+/, "").replace(/^./, (c) => c.toLowerCase()) + " " : "";
+  let avance = "";
+  if (cfg.type === "habit") avance = "Rumi " + cfg.itemLabel + " " + acc.cared + " de " + d + " día" + (d === 1 ? "" : "s") + " hasta ahora. ";
+  else if (cfg.type === "social") avance = "Esta semana has saludado a " + Object.keys(acc.greeted).length + " de " + cfg.classmates.length + " compañeros. ";
+  else if (cfg.type === "thoughts") avance = "Esta semana has probado pensarlo distinto " + acc.changed + (acc.changed === 1 ? " vez" : " veces") + ". ";
+  else if (cfg.type === "timing") avance = "Hoy se sigue practicando lo mismo que ayer. ";
+  return { tag: "Día " + (d + 1), text: CONECTORES_DIA[d] + ayer + avance + "<i>" + first + "</i>", cfg, kind: cfg.type };
 }
 
 function stepSituacion(b) {
